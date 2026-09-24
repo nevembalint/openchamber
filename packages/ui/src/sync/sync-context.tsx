@@ -542,6 +542,20 @@ const trimmedOrUndefined = (value: string | undefined): string | undefined => {
   return trimmed && trimmed.length > 0 ? trimmed : undefined
 }
 
+const notificationToastId = (variant?: string, title?: string, body?: string, tag?: string): string | undefined => {
+  if (tag) return tag
+  const fallback = [variant, title, body].filter(Boolean).join("|")
+  return fallback || undefined
+}
+
+const showNotificationToast = (variant: OpenchamberNotification["variant"], title: string, body?: string, tag?: string): void => {
+  if (!variant) return
+  toast[variant](title, {
+    id: notificationToastId(variant, title, body, tag),
+    description: body,
+  })
+}
+
 /**
  * OpenChamber's own notification frame: the agent-completion notice for
  * desktop, VS Code and mobile (the web surface has its own stream), plus the
@@ -552,6 +566,9 @@ const handleUiNotificationEvent = (notification: OpenchamberNotification, fallba
   const sessionId = trimmedOrUndefined(notification.sessionId)
   const directory = trimmedOrUndefined(notification.directory)
     ?? (fallbackDirectory !== "global" ? fallbackDirectory : "")
+  const title = trimmedOrUndefined(notification.title)
+  const body = trimmedOrUndefined(notification.body)
+  const tag = trimmedOrUndefined(notification.tag)
 
   if (kind === "opencode-restart-interrupted") {
     const dictionary = useI18nStore.getState().dictionary
@@ -572,6 +589,8 @@ const handleUiNotificationEvent = (notification: OpenchamberNotification, fallba
     } else {
       toast.info(title, options)
     }
+  } else if (title) {
+    showNotificationToast(notification.variant, title, body, tag)
   }
 
   // The local desktop shell already delivered this one natively.
@@ -584,9 +603,10 @@ const handleUiNotificationEvent = (notification: OpenchamberNotification, fallba
   if (!notifications?.notifyAgentCompletion) return
 
   void notifications.notifyAgentCompletion({
-    title: trimmedOrUndefined(notification.title),
-    body: trimmedOrUndefined(notification.body),
-    tag: trimmedOrUndefined(notification.tag),
+    title,
+    body,
+    tag,
+    variant: notification.variant,
     kind,
     sessionId,
     directory: directory || undefined,

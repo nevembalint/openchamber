@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 const parsePushSubscribeBody = (body) => {
   if (!body || typeof body !== 'object') return null;
   const endpoint = body.endpoint;
@@ -22,6 +24,35 @@ const parsePushUnsubscribeBody = (body) => {
   return { endpoint: endpoint.trim() };
 };
 
+const optionalTrimmedString = z.string().trim().min(1).optional().catch(undefined);
+const notificationEmitBodySchema = z.object({
+  title: optionalTrimmedString,
+  body: optionalTrimmedString,
+  variant: z.enum(['success', 'info', 'warning', 'error']).optional().catch(undefined),
+  tag: optionalTrimmedString,
+  kind: optionalTrimmedString,
+  sessionId: optionalTrimmedString,
+  directory: optionalTrimmedString,
+}).passthrough();
+
+const parseNotificationEmitBody = (body) => {
+  const parsed = notificationEmitBodySchema.safeParse(body);
+  if (!parsed.success) return null;
+
+  const { title, body: message } = parsed.data;
+  if (!title && !message) return null;
+
+  return {
+    title: title || 'OpenChamber',
+    body: message,
+    variant: parsed.data.variant,
+    tag: parsed.data.tag,
+    kind: parsed.data.kind || 'plugin',
+    sessionId: parsed.data.sessionId,
+    directory: parsed.data.directory,
+  };
+};
+
 export const NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MS = 20_000;
 
 export const registerNotificationRoutes = (app, dependencies) => {
@@ -42,6 +73,8 @@ export const registerNotificationRoutes = (app, dependencies) => {
     isUiVisible,
     getUiNotificationClients,
     writeSseEvent,
+    emitDesktopNotification = () => false,
+    broadcastUiNotification = () => {},
     getSessionActivitySnapshot,
     getSessionStateSnapshot,
     getPendingBlockingRequestsSnapshot,
@@ -64,6 +97,25 @@ export const registerNotificationRoutes = (app, dependencies) => {
     } catch (error) {
       console.warn('[OpenCodeWatcher] lazy start failed:', error?.message ?? error);
     }
+  };
+
+  const resolveExistingUiToken = async (req, res) => {
+    const cookieToken = getUiSessionTokenFromRequest(req);
+    if (!uiAuthController?.ensureSessionToken) return cookieToken;
+
+    let issuedSessionCookie = false;
+    const authResponse = cookieToken ? res : Object.create(res);
+    if (!cookieToken) {
+      authResponse.setHeader = (name, value) => {
+        if (String(name).toLowerCase() === 'set-cookie') {
+          issuedSessionCookie = true;
+          return;
+        }
+        return res.setHeader?.(name, value);
+      };
+    }
+    const token = await uiAuthController.ensureSessionToken(req, authResponse);
+    return issuedSessionCookie ? null : token;
   };
 
   app.get('/api/push/vapid-public-key', async (_req, res) => {
@@ -280,6 +332,32 @@ export const registerNotificationRoutes = (app, dependencies) => {
     } catch {
       cleanup();
     }
+  });
+
+  app.post('/api/notifications/emit', async (req, res) => {
+    const uiToken = await resolveExistingUiToken(req, res);
+    if (!uiToken) {
+      return res.status(401).json({ error: 'UI session missing' });
+    }
+
+    const parsed = parseNotificationEmitBody(req.body);
+    if (!parsed) {
+      return res.status(400).json({ error: 'title or body required' });
+    }
+
+    const settings = await readSettingsFromDiskMigrated();
+    if (settings.nativeNotificationsEnabled === false) {
+      return res.json({ ok: true, delivered: false, skipped: 'nativeNotificationsDisabled' });
+    }
+
+    const notificationPayload = {
+      ...parsed,
+      requireHidden: settings.notificationMode !== 'always',
+    };
+    const desktopNotificationDelivered = emitDesktopNotification(notificationPayload) === true;
+    broadcastUiNotification(notificationPayload, { desktopNotificationDelivered });
+
+    return res.json({ ok: true, delivered: true, desktopNotificationDelivered });
   });
 
   app.get('/api/session-activity', (_req, res) => {

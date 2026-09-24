@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 import express from 'express';
 import { createUiAuth } from '../ui-auth/ui-auth.js';
+import { registerNotificationRoutes } from './routes.js';
 import { registerScheduledTaskRoutes } from '../scheduled-tasks/routes.js';
 import { createNotificationEmitterRuntime } from './emitter-runtime.js';
 
@@ -60,6 +61,60 @@ describe('notifications over the authenticated control stream', () => {
       await reader.cancel();
     } finally {
       abort.abort();
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+      auth.dispose();
+    }
+  });
+
+  it('requires existing UI auth before emitting plugin notifications', async () => {
+    const auth = createUiAuth({
+      requireClientAuth: true,
+      clientAuthController: {
+        authenticateBearerToken: async (token) => token === 'test-client' ? { ok: true, clientId: 'fixture' } : null,
+      },
+    });
+    const emitDesktopNotification = vi.fn(() => true);
+    const broadcastUiNotification = vi.fn();
+    const app = express();
+    app.use(express.json());
+    registerNotificationRoutes(app, {
+      uiAuthController: auth,
+      getUiSessionTokenFromRequest: () => null,
+      readSettingsFromDiskMigrated: async () => ({ nativeNotificationsEnabled: true, notificationMode: 'always' }),
+      emitDesktopNotification,
+      broadcastUiNotification,
+    });
+    const server = createServer(app);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    try {
+      const denied = await fetch(`${base}/api/notifications/emit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Blocked' }),
+      });
+      expect(denied.status).toBe(401);
+
+      const accepted = await fetch(`${base}/api/notifications/emit`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-client', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Build done', body: 'Ready', variant: 'success', tag: 'plugin-build' }),
+      });
+      expect(accepted.status).toBe(200);
+      expect(await accepted.json()).toEqual({ ok: true, delivered: true, desktopNotificationDelivered: true });
+      expect(emitDesktopNotification).toHaveBeenCalledWith({
+        title: 'Build done',
+        body: 'Ready',
+        variant: 'success',
+        tag: 'plugin-build',
+        kind: 'plugin',
+        sessionId: undefined,
+        directory: undefined,
+        requireHidden: false,
+      });
+      expect(broadcastUiNotification).toHaveBeenCalledTimes(1);
+    } finally {
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
       auth.dispose();

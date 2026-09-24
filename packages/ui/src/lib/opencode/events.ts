@@ -149,6 +149,7 @@ export type OpenchamberNotification = {
   directory?: string
   title?: string
   body?: string
+  variant?: "success" | "info" | "warning" | "error"
   tag?: string
   requireHidden?: boolean
   desktopNotificationDelivered?: boolean

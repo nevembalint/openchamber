@@ -157,6 +157,100 @@ describe('local SSE routes', () => {
     }
   });
 
+  it('emits authenticated plugin notifications through the existing broadcaster', async () => {
+    const { app, getRoute } = createRouteRegistry();
+    const emitDesktopNotification = vi.fn(() => true);
+    const broadcastUiNotification = vi.fn();
+    const getUiSessionTokenFromRequest = vi.fn(() => 'cookie-token');
+
+    registerNotificationRoutes(app, {
+      uiAuthController: {
+        ensureSessionToken: async () => 'cookie-token',
+      },
+      getUiSessionTokenFromRequest,
+      readSettingsFromDiskMigrated: async () => ({ nativeNotificationsEnabled: true, notificationMode: 'focus' }),
+      emitDesktopNotification,
+      broadcastUiNotification,
+    });
+
+    const handler = getRoute('POST', '/api/notifications/emit');
+    const req = { body: { title: ' Build done ', body: ' Ready ', variant: 'success', tag: ' plugin-1 ', kind: ' plugin ' }, headers: {} };
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    const payload = {
+      title: 'Build done',
+      body: 'Ready',
+      variant: 'success',
+      tag: 'plugin-1',
+      kind: 'plugin',
+      sessionId: undefined,
+      directory: undefined,
+      requireHidden: true,
+    };
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ ok: true, delivered: true, desktopNotificationDelivered: true });
+    expect(getUiSessionTokenFromRequest).toHaveBeenCalledWith(req);
+    expect(emitDesktopNotification).toHaveBeenCalledWith(payload);
+    expect(broadcastUiNotification).toHaveBeenCalledWith(payload, { desktopNotificationDelivered: true });
+  });
+
+  it('rejects plugin notification emission that would create an anonymous UI session', async () => {
+    const { app, getRoute } = createRouteRegistry();
+    const setHeader = vi.fn();
+
+    registerNotificationRoutes(app, {
+      uiAuthController: {
+        ensureSessionToken: async (_req, res) => {
+          res.setHeader('Set-Cookie', 'openchamber=issued');
+          return 'issued-token';
+        },
+      },
+      getUiSessionTokenFromRequest: () => null,
+      readSettingsFromDiskMigrated: async () => ({ nativeNotificationsEnabled: true, notificationMode: 'always' }),
+      emitDesktopNotification: vi.fn(),
+      broadcastUiNotification: vi.fn(),
+    });
+
+    const handler = getRoute('POST', '/api/notifications/emit');
+    const res = createMockResponse();
+    res.setHeader = setHeader;
+
+    await handler({ body: { title: 'Nope' }, headers: {} }, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body)).toEqual({ error: 'UI session missing' });
+    expect(setHeader).not.toHaveBeenCalledWith('Set-Cookie', expect.any(String));
+  });
+
+  it('does not emit plugin notifications while native notifications are disabled', async () => {
+    const { app, getRoute } = createRouteRegistry();
+    const emitDesktopNotification = vi.fn();
+    const broadcastUiNotification = vi.fn();
+    const getUiSessionTokenFromRequest = vi.fn(() => 'cookie-token');
+
+    registerNotificationRoutes(app, {
+      uiAuthController: {
+        ensureSessionToken: async () => 'cookie-token',
+      },
+      getUiSessionTokenFromRequest,
+      readSettingsFromDiskMigrated: async () => ({ nativeNotificationsEnabled: false, notificationMode: 'always' }),
+      emitDesktopNotification,
+      broadcastUiNotification,
+    });
+
+    const handler = getRoute('POST', '/api/notifications/emit');
+    const res = createMockResponse();
+
+    await handler({ body: { title: 'Muted' }, headers: {} }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ ok: true, delivered: false, skipped: 'nativeNotificationsDisabled' });
+    expect(emitDesktopNotification).not.toHaveBeenCalled();
+    expect(broadcastUiNotification).not.toHaveBeenCalled();
+  });
+
   it('serves OpenChamber SSE with nginx-safe headers', () => {
     const { app, getRoute } = createRouteRegistry();
     const clients = new Set();

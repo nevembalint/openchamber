@@ -158,12 +158,12 @@ describe("createEventPipeline", () => {
   test("passes OpenChamber notification and auto-accept frames through typed", async () => {
     const { events } = await collect(
       [
-        { type: "openchamber:notification", properties: { kind: "agent-complete", sessionId: "ses_1", title: "Done" } },
+        { type: "openchamber:notification", properties: { kind: "agent-complete", sessionId: "ses_1", title: "Done", variant: "success" } },
         { type: "openchamber:permission-auto-accept.updated", properties: { sessions: { ses_1: true }, revision: 3 } as never },
       ],
       2,
     )
-    expect(events[0]).toEqual({ type: "openchamber.notification", properties: { kind: "agent-complete", sessionId: "ses_1", title: "Done" } })
+    expect(events[0]).toEqual({ type: "openchamber.notification", properties: { kind: "agent-complete", sessionId: "ses_1", title: "Done", variant: "success" } })
     expect(events[1]).toEqual({ type: "openchamber.permission-auto-accept", properties: { sessions: { ses_1: true }, revision: 3 } })
   })
 

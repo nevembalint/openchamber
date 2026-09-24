@@ -70,12 +70,15 @@ mock.module("sonner", () => ({
 }))
 
 const infoToasts: Array<{ title: string; id?: string }> = []
+const successToasts: Array<{ title: string; id?: string; description?: string }> = []
 
 mock.module("@/components/ui", () => ({
   toast: {
     info: (title: string, options?: { id?: string }) => { infoToasts.push({ title, id: options?.id }) },
     error: () => undefined,
-    success: () => undefined,
+    success: (title: string, options?: { id?: string; description?: string }) => {
+      successToasts.push({ title, id: options?.id, description: options?.description })
+    },
     dismiss: () => undefined,
   },
 }))
@@ -370,6 +373,7 @@ describe("resyncBlockingRequestsForDirectory", () => {
 describe("OpenChamber-native frames", () => {
   beforeEach(() => {
     infoToasts.length = 0
+    successToasts.length = 0
     agentCompletions.length = 0
     autoAcceptSnapshots.length = 0
   })
@@ -404,6 +408,38 @@ describe("OpenChamber-native frames", () => {
         requireHidden: false,
       })
       // A global frame must not materialize a directory store on its way through.
+      expect(childStores.children.size).toBe(0)
+    } finally {
+      childStores.disposeAll()
+    }
+  })
+
+  test("raises a requested in-app toast for plugin notifications", () => {
+    const childStores = new ChildStoreManager()
+    const routingIndex = createEventRoutingIndex()
+    const event: SyncEvent = {
+      type: "openchamber.notification",
+      properties: {
+        kind: "plugin",
+        title: "Build done",
+        body: "Ready to review",
+        variant: "success",
+        tag: "plugin-build-done",
+      },
+    }
+
+    try {
+      handleEvent("global", event, childStores, routingIndex, getRuntimeKey())
+
+      expect(successToasts).toEqual([{ title: "Build done", id: "plugin-build-done", description: "Ready to review" }])
+      expect(agentCompletions[0]).toMatchObject({
+        title: "Build done",
+        body: "Ready to review",
+        tag: "plugin-build-done",
+        variant: "success",
+        kind: "plugin",
+        requireHidden: false,
+      })
       expect(childStores.children.size).toBe(0)
     } finally {
       childStores.disposeAll()

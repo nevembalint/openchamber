@@ -123,6 +123,7 @@ const openchamberNotificationSchema = z.object({
       directory: z.string(),
       title: z.string(),
       body: z.string(),
+      variant: z.enum(["success", "info", "warning", "error"]).optional().catch(undefined),
       tag: z.string(),
       requireHidden: z.boolean(),
       desktopNotificationDelivered: z.boolean(),

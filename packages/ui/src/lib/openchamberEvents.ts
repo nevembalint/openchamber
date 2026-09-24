@@ -121,6 +121,7 @@ type RoutingSafetySkippedEvent = { type: 'routing-safety-skipped' } & z.infer<ty
 const notificationPropertiesSchema = z.object({
   title: z.string().optional(),
   body: z.string().optional(),
+  variant: z.enum(['success', 'info', 'warning', 'error']).optional().catch(undefined),
   tag: z.string().optional(),
   kind: z.string().optional(),
   sessionId: z.string().optional(),

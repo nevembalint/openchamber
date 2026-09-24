@@ -30,6 +30,7 @@ This module provides notification message preparation utilities for the web serv
   - `POST /api/push/visibility`
   - `GET /api/push/visibility`
   - `GET /api/notifications/stream`
+  - `POST /api/notifications/emit`
   - `GET /api/session-activity`
   - `GET /api/sessions/snapshot`
   - `GET /api/sessions/status`
@@ -81,6 +82,25 @@ This module provides notification message preparation utilities for the web serv
    - `writeSseEvent(res, payload, serializedPayload?)`, where broadcast callers may share one JSON encoding across recipients
   - `emitDesktopNotification(payload)`
   - `broadcastUiNotification(payload)`
+
+## Plugin notification emission
+
+`POST /api/notifications/emit` lets an authenticated caller send the same live
+notification payload the OpenCode trigger runtime broadcasts. The route accepts
+`{ title, body, variant?, tag?, kind?, sessionId?, directory? }`, requires at
+least one of `title` or `body`, trims string fields, defaults `kind` to
+`plugin`, and sends `requireHidden` according to `settings.notificationMode`.
+
+The route uses `uiAuthController.ensureSessionToken`, so browser session cookies,
+URL auth tokens, and paired client bearer tokens follow the existing UI auth
+rules. It does not trust loopback alone. When `settings.nativeNotificationsEnabled`
+is false, it returns success with `delivered: false` and does not emit. When
+enabled, it calls `emitDesktopNotification` first and passes that result into
+`broadcastUiNotification` so local desktop runtimes do not show duplicate native
+alerts.
+
+When `variant` is `success`, `info`, `warning`, or `error`, shared UI clients
+also show an in-app toast with the payload `title` and `body`.
 
 ### Template runtime API (template-runtime.js)
 - `createNotificationTemplateRuntime(dependencies)`: creates shared notification/template runtime. Model-backed summarization was retired after the Zen provider became unavailable.

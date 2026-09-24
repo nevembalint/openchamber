@@ -787,6 +787,7 @@ export interface NotificationPayload {
   title?: string;
   body?: string;
 
+  variant?: 'success' | 'info' | 'warning' | 'error';
   tag?: string;
   kind?: string;
   sessionId?: string;

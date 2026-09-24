@@ -1997,6 +1997,8 @@ async function main(options = {}) {
     isUiVisible,
     getUiNotificationClients: () => uiNotificationClients,
     writeSseEvent,
+    emitDesktopNotification,
+    broadcastUiNotification,
     sessionRuntime,
     setPushInitialized,
     fs,
