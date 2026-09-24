@@ -75,6 +75,7 @@ export const registerNotificationRoutes = (app, dependencies) => {
     writeSseEvent,
     emitDesktopNotification = () => false,
     broadcastUiNotification = () => {},
+    isAgentToolRequestAuthorized = () => false,
     getSessionActivitySnapshot,
     getSessionStateSnapshot,
     getPendingBlockingRequestsSnapshot,
@@ -97,6 +98,12 @@ export const registerNotificationRoutes = (app, dependencies) => {
     } catch (error) {
       console.warn('[OpenCodeWatcher] lazy start failed:', error?.message ?? error);
     }
+  };
+
+  const hasNotificationEmitAuth = async (req, res) => {
+    if (isAgentToolRequestAuthorized(req)) return true;
+    const uiToken = await resolveExistingUiToken(req, res);
+    return Boolean(uiToken);
   };
 
   const resolveExistingUiToken = async (req, res) => {
@@ -335,8 +342,7 @@ export const registerNotificationRoutes = (app, dependencies) => {
   });
 
   app.post('/api/notifications/emit', async (req, res) => {
-    const uiToken = await resolveExistingUiToken(req, res);
-    if (!uiToken) {
+    if (!await hasNotificationEmitAuth(req, res)) {
       return res.status(401).json({ error: 'UI session missing' });
     }
 

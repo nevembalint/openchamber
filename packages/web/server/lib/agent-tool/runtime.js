@@ -484,6 +484,7 @@ export const createAgentToolRuntime = (dependencies) => {
     pluginDirectory,
     materializePlugin,
     createChildEnv,
+    authorizeRequest: authorize,
     registerRoutes,
     execute,
     abortSession,

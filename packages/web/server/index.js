@@ -1999,6 +1999,7 @@ async function main(options = {}) {
     writeSseEvent,
     emitDesktopNotification,
     broadcastUiNotification,
+    isAgentToolRequestAuthorized: (req) => agentToolRuntime?.authorizeRequest?.(req) === true,
     sessionRuntime,
     setPushInitialized,
     fs,

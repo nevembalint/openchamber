@@ -91,11 +91,12 @@ notification payload the OpenCode trigger runtime broadcasts. The route accepts
 least one of `title` or `body`, trims string fields, defaults `kind` to
 `plugin`, and sends `requireHidden` according to `settings.notificationMode`.
 
-The route uses `uiAuthController.ensureSessionToken`, so browser session cookies,
-URL auth tokens, and paired client bearer tokens follow the existing UI auth
-rules. It does not trust loopback alone. When `settings.nativeNotificationsEnabled`
-is false, it returns success with `delivered: false` and does not emit. When
-enabled, it calls `emitDesktopNotification` first and passes that result into
+The route accepts the managed agent-tool bearer token, or an existing UI session
+or paired client token through `uiAuthController.ensureSessionToken`. It does not
+trust loopback alone and it refuses to mint an anonymous UI session for this
+endpoint. When `settings.nativeNotificationsEnabled` is false, it returns
+success with `delivered: false` and does not emit. When enabled, it calls
+`emitDesktopNotification` first and passes that result into
 `broadcastUiNotification` so local desktop runtimes do not show duplicate native
 alerts.
 

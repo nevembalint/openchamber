@@ -120,4 +120,39 @@ describe('notifications over the authenticated control stream', () => {
       auth.dispose();
     }
   });
+
+  it('accepts the managed agent tool token for plugin notification emission', async () => {
+    const emitDesktopNotification = vi.fn(() => false);
+    const broadcastUiNotification = vi.fn();
+    const app = express();
+    app.use(express.json());
+    registerNotificationRoutes(app, {
+      uiAuthController: null,
+      getUiSessionTokenFromRequest: () => null,
+      readSettingsFromDiskMigrated: async () => ({ nativeNotificationsEnabled: true, notificationMode: 'always' }),
+      emitDesktopNotification,
+      broadcastUiNotification,
+      isAgentToolRequestAuthorized: (req) => req.headers.authorization === 'Bearer agent-tool-token',
+    });
+    const server = createServer(app);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    try {
+      const response = await fetch(`${base}/api/notifications/emit`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer agent-tool-token', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: 'Ready' }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, delivered: true, desktopNotificationDelivered: false });
+      expect(broadcastUiNotification).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'OpenChamber',
+        body: 'Ready',
+        kind: 'plugin',
+      }), { desktopNotificationDelivered: false });
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });

@@ -224,6 +224,32 @@ describe('local SSE routes', () => {
     expect(setHeader).not.toHaveBeenCalledWith('Set-Cookie', expect.any(String));
   });
 
+  it('accepts the managed agent tool token for plugin notification emission', async () => {
+    const { app, getRoute } = createRouteRegistry();
+    const emitDesktopNotification = vi.fn(() => false);
+    const broadcastUiNotification = vi.fn();
+
+    registerNotificationRoutes(app, {
+      uiAuthController: {
+        ensureSessionToken: vi.fn(),
+      },
+      getUiSessionTokenFromRequest: () => null,
+      readSettingsFromDiskMigrated: async () => ({ nativeNotificationsEnabled: true, notificationMode: 'always' }),
+      emitDesktopNotification,
+      broadcastUiNotification,
+      isAgentToolRequestAuthorized: () => true,
+    });
+
+    const handler = getRoute('POST', '/api/notifications/emit');
+    const res = createMockResponse();
+
+    await handler({ body: { title: 'From plugin' }, headers: {} }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ ok: true, delivered: true, desktopNotificationDelivered: false });
+    expect(broadcastUiNotification).toHaveBeenCalledWith(expect.objectContaining({ title: 'From plugin', kind: 'plugin' }), { desktopNotificationDelivered: false });
+  });
+
   it('does not emit plugin notifications while native notifications are disabled', async () => {
     const { app, getRoute } = createRouteRegistry();
     const emitDesktopNotification = vi.fn();
